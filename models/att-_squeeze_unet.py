@@ -104,6 +104,36 @@ class UpsamplingBlock(nn.Module):
 
         return x
 
+class AttSqueezeUNet(nn.Module):
+    def __init__(self, in_channels, n_class=1, dropout=False):
+        super(AttSqueezeUNet, self).__init__()
+        self.__dropout = dropout
+        self.channel_axis = 1
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(in_channels, 64, 3, stride=2, padding=3),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=(3,3), stride=2)
+        )
+
+        self.fire1 = FireModule(64, 16, 64)
+        self.fire2 = FireModule(64, 16, 64)
+        self.maxpooling_2 = nn.MaxPool2d(kernel_size=(3,3), stride=(2,2))
+
+        self.fire3 = FireModule(64,32,128)
+        self.fire4 = FireModule(128,32,128)
+        self.maxpooling_3 = nn.MaxPool2d(kernel_size=(3,3), stride=(2,2))
+
+        self.fire5 = FireModule(128, 48, 192)
+        self.fire6 = FireModule(192, 48, 192)
+        self.fire7 = FireModule(192, 48, 192)
+        self.fire8 = FireModule(192, 48, 192)
+
+        self.upsampling1 = UpsamplingBlock(192, 192, squeeze=48, expand=192, strides=(1,1), deconv_ksize=(3), att_filters=96)
+        self.upsampling2
+        self.upsampling3
+        self.upsampling4
+        self.upsampling5
+
 
 
 if __name__ == "__main__":
