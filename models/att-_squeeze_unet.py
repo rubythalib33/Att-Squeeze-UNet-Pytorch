@@ -1,6 +1,7 @@
 from numpy import float32
 import torch
 import torch.nn as nn
+import torchvision.transforms.functional as TF
 
 class FireModule(nn.Module):
     def __init__(self, input_channel, squeeze, expand):
@@ -57,7 +58,7 @@ class AttFireModule(nn.Module):
         return x
 
 class AttentionBlock(nn.Module):
-    def __init__(self, in_channels,filters):
+    def __init__(self, in_channels, in_channels2 ,filters):
         super(AttentionBlock, self).__init__()
 
         self.w_g = nn.Sequential(
@@ -66,7 +67,7 @@ class AttentionBlock(nn.Module):
         )
 
         self.w_x = nn.Sequential(
-            nn.Conv2d(in_channels, filters, kernel_size=1, bias=False),
+            nn.Conv2d(in_channels2, filters, kernel_size=1, bias=False),
             nn.BatchNorm2d(num_features=filters)
         )
 
@@ -80,6 +81,7 @@ class AttentionBlock(nn.Module):
     
     def forward(self, g, x):
         print("--g", g.shape, self.w_g)
+        print("--x", x.shape, self.w_x)
         g1 = self.w_g(g)
         print("--g1", g1.shape)
         x1 = self.w_x(x)
@@ -93,14 +95,15 @@ class AttentionBlock(nn.Module):
         return out
     
 class UpsamplingBlock(nn.Module):
-    def __init__(self,input_channels, filters, squeeze, expand, strides, deconv_ksize, att_filters):
+    def __init__(self,input_channels, input_channels2, filters, squeeze, expand, strides, deconv_ksize, att_filters):
         super(UpsamplingBlock, self).__init__()
         self.upconv = nn.ConvTranspose2d(input_channels, filters, kernel_size=deconv_ksize, stride=strides)
-        self.fire = FireModule(filters+att_filters, squeeze, expand)
-        self.attention = AttentionBlock(input_channels, att_filters)
+        self.fire = FireModule(filters+input_channels2, squeeze, expand)
+        self.attention = AttentionBlock(filters, input_channels2, att_filters)
     
     def forward(self, x, g):
         d = self.upconv(x)
+        d = TF.resize(d, x.shape[2:])
         print("-d", d.shape)
         x = self.attention(d, g)
         print("-x", x.shape)
@@ -117,7 +120,7 @@ class AttSqueezeUNet(nn.Module):
         self.__dropout = dropout
         self.channel_axis = 1
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels, 64, 3, stride=2, padding=3),
+            nn.Conv2d(in_channels, 64, 3, stride=1, padding=1),
             nn.ReLU(inplace=True)
         )
 
@@ -138,10 +141,10 @@ class AttSqueezeUNet(nn.Module):
         self.fire7 = FireModule(384, 48, 256)
         self.fire8 = FireModule(512, 48, 256)
 
-        self.upsampling1 = UpsamplingBlock(512, 192, squeeze=48, expand=192, strides=(1,1), deconv_ksize=(3), att_filters=96)
-        self.upsampling2 = UpsamplingBlock(192, 128, squeeze=32, expand=128, strides=(1,1), deconv_ksize=(3), att_filters=64)
-        self.upsampling3 = UpsamplingBlock(128, 64, squeeze=16, expand=64, strides=(1,1), deconv_ksize=(3), att_filters=16)
-        self.upsampling4 = UpsamplingBlock(64, 32, squeeze=16, expand=32, strides=(1,1), deconv_ksize=(3), att_filters=4)
+        self.upsampling1 = UpsamplingBlock(512,384, 192, squeeze=48, expand=192, strides=(1,1), deconv_ksize=(3), att_filters=96)
+        self.upsampling2 = UpsamplingBlock(384, 256, 128, squeeze=32, expand=128, strides=(1,1), deconv_ksize=(3), att_filters=64)
+        self.upsampling3 = UpsamplingBlock(256, 128, 64, squeeze=16, expand=64, strides=(1,1), deconv_ksize=(3), att_filters=16)
+        self.upsampling4 = UpsamplingBlock(64, 64, 32, squeeze=16, expand=32, strides=(1,1), deconv_ksize=(3), att_filters=4)
         self.upsampling5 = nn.Upsample(size=(2,2))
 
         self.conv2 = nn.Sequential(
@@ -158,6 +161,7 @@ class AttSqueezeUNet(nn.Module):
     
     def forward(self, x):
         x0 = self.conv1(x)
+        print("x0",x0.shape)
         x1 = self.maxpooling_1(x0)
         print("x1",x1.shape)
 
